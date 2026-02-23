@@ -1,0 +1,6 @@
+streamlit>=1.32.0
+textblob>=0.17.1
+nltk>=3.8.1
+matplotlib>=3.7.0
+pandas>=2.0.0
+numpy>=1.24.0
