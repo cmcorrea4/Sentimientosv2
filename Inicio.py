@@ -424,7 +424,7 @@ def barras_oraciones(oraciones_datos: list) -> plt.Figure:
 
     bars = ax.barh(etiquetas[::-1], valores[::-1], color=colores[::-1],
                    height=0.55, edgecolor='none')
-    ax.axvline(0, color='rgba(255,255,255,0.15)', linewidth=1)
+    ax.axvline(0, color=(1, 1, 1, 0.15), linewidth=1)
     ax.axvline(0.1, color='#34d399', linewidth=0.7, linestyle='--', alpha=0.4)
     ax.axvline(-0.1, color='#f87171', linewidth=0.7, linestyle='--', alpha=0.4)
 
@@ -438,7 +438,7 @@ def barras_oraciones(oraciones_datos: list) -> plt.Figure:
     ax.set_xlim(-1.15, 1.15)
     ax.tick_params(colors='#6b7280', labelsize=9)
     ax.spines[:].set_visible(False)
-    ax.grid(axis='x', color='rgba(255,255,255,0.04)', linewidth=0.5)
+    ax.grid(axis='x', color=(1, 1, 1, 0.06), linewidth=0.5)
     plt.tight_layout()
     return fig
 
