@@ -10,6 +10,101 @@ import matplotlib.patheffects as pe
 import pandas as pd
 import numpy as np
 
+# ─── Lexicón de sentimientos en español ───────────────────────
+# Palabras positivas y negativas comunes en español
+PALABRAS_POSITIVAS = {
+    "bueno", "buena", "buenos", "buenas", "excelente", "excelentes",
+    "maravilloso", "maravillosa", "increíble", "increíbles", "fantástico",
+    "fantástica", "genial", "positivo", "positiva", "feliz", "alegre",
+    "contento", "contenta", "satisfecho", "satisfecha", "perfecto", "perfecta",
+    "mejor", "mejora", "mejorado", "mejorar", "prometedor", "prometedora",
+    "exitoso", "exitosa", "éxito", "logro", "logros", "avance", "avances",
+    "innovación", "innovador", "innovadora", "potencial", "oportunidad",
+    "oportunidades", "beneficio", "beneficios", "útil", "útiles", "eficiente",
+    "eficientes", "efectivo", "efectiva", "poderoso", "poderosa", "capaz",
+    "capaces", "brillante", "brillantes", "sobresaliente", "notable",
+    "admirable", "valioso", "valiosa", "importante", "fascinante", "fascinantes",
+    "interesante", "interesantes", "fácil", "rápido", "rápida", "preciso",
+    "precisa", "seguro", "segura", "confiable", "confiables", "robusto",
+    "robusta", "gran", "grande", "grandes", "mejor", "óptimo", "óptima",
+    "gusta", "encanta", "amo", "amas", "aman", "recomienda", "recomendamos",
+    "amor", "pasión", "entusiasmo", "esperanza", "progreso", "crecimiento",
+    "transformación", "mejorar", "superar", "ganar", "triunfar", "destacar",
+    "liderar", "empoderar", "inspirar"
+}
+
+PALABRAS_NEGATIVAS = {
+    "malo", "mala", "malos", "malas", "terrible", "terribles", "horrible",
+    "horribles", "pésimo", "pésima", "peor", "deficiente", "deficientes",
+    "problema", "problemas", "error", "errores", "falla", "fallas", "falló",
+    "fracaso", "fracasos", "fracasó", "grave", "graves", "negativo", "negativa",
+    "difícil", "difíciles", "imposible", "imposibles", "complicado", "complicada",
+    "preocupante", "preocupantes", "peligroso", "peligrosa", "riesgo", "riesgos",
+    "desafío", "desafíos", "obstáculo", "obstáculos", "limitación", "limitaciones",
+    "lento", "lenta", "ineficiente", "ineficientes", "inútil", "inútiles",
+    "obsoleto", "obsoleta", "anticuado", "anticuada", "desactualizado",
+    "frustrante", "frustrantes", "decepcionante", "decepcionantes",
+    "insatisfecho", "insatisfecha", "insuficiente", "insuficientes",
+    "inadecuado", "inadecuada", "incorrecto", "incorrecta", "equivocado",
+    "equivocada", "complejo", "compleja", "confuso", "confusa", "molesto",
+    "molesta", "triste", "tristeza", "miedo", "temor", "angustia", "ansiedad",
+    "desastre", "catástrofe", "crisis", "deterioro", "declive", "caída",
+    "pérdida", "perdida", "daño", "daños", "aburrido", "aburrida", "mediocre"
+}
+
+# Modificadores de intensidad
+INTENSIFICADORES = {"muy", "bastante", "extremadamente", "totalmente", "completamente",
+                    "absolutamente", "increíblemente", "enormemente", "sumamente"}
+NEGACIONES = {"no", "nunca", "jamás", "tampoco", "ni", "ningún", "ninguna", "sin"}
+
+
+def analizar_con_lexico(texto: str) -> dict:
+    """Análisis de sentimiento usando lexicón español propio — funciona offline."""
+    tokens = texto.lower().split()
+    score = 0.0
+    total_sentiment_words = 0
+    negacion_activa = False
+
+    for i, token in enumerate(tokens):
+        # Limpiar puntuación del token
+        token_limpio = ''.join(c for c in token if c.isalpha() or c == 'é' or c == 'á'
+                               or c == 'í' or c == 'ó' or c == 'ú' or c == 'ü' or c == 'ñ')
+
+        if token_limpio in NEGACIONES:
+            negacion_activa = True
+            continue
+
+        intensificador = 1.0
+        if i > 0:
+            prev = ''.join(c for c in tokens[i-1] if c.isalpha())
+            if prev in INTENSIFICADORES:
+                intensificador = 1.5
+
+        if token_limpio in PALABRAS_POSITIVAS:
+            delta = 1.0 * intensificador
+            score += -delta if negacion_activa else delta
+            total_sentiment_words += 1
+            negacion_activa = False
+        elif token_limpio in PALABRAS_NEGATIVAS:
+            delta = -1.0 * intensificador
+            score += -delta if negacion_activa else delta
+            total_sentiment_words += 1
+            negacion_activa = False
+        else:
+            negacion_activa = False  # la negación caduca si no hay palabra de sentimiento
+
+    # Normalizar entre -1 y 1
+    if total_sentiment_words > 0:
+        polaridad = max(-1.0, min(1.0, score / (total_sentiment_words * 1.5)))
+    else:
+        polaridad = 0.0
+
+    # Subjetividad aproximada: proporción de palabras de sentimiento
+    num_palabras = len([t for t in tokens if len(t) > 2])
+    subjetividad = min(1.0, total_sentiment_words / max(num_palabras, 1) * 3)
+
+    return round(polaridad, 4), round(subjetividad, 4)
+
 # ─── Descarga de recursos NLTK ────────────────────────────────
 @st.cache_resource
 def descargar_nltk():
@@ -189,36 +284,70 @@ hr { border-color: rgba(255,255,255,0.07) !important; }
 # ─── Funciones ────────────────────────────────────────────────
 
 def analizar_sentimiento_oracion(oracion: str) -> dict:
-    """Analiza sentimiento de una oración. Intenta traducir al inglés primero."""
+    """
+    Análisis de sentimiento multicapa para español:
+    1. Intenta traducir con deep-translator → TextBlob en inglés
+    2. Si falla, usa lexicón propio en español (siempre disponible offline)
+    """
+    pol, sub = None, None
+    metodo = "lexicón"
+
+    # ── Capa 1: deep-translator + TextBlob ────────────────────
     try:
-        blob = TextBlob(oracion)
-        blob_en = blob.translate(from_lang='es', to='en')
-        pol = blob_en.sentiment.polarity
-        sub = blob_en.sentiment.subjectivity
+        from deep_translator import GoogleTranslator
+        texto_en = GoogleTranslator(source='es', target='en').translate(oracion)
+        if texto_en:
+            blob = TextBlob(texto_en)
+            pol_tb = blob.sentiment.polarity
+            sub_tb = blob.sentiment.subjectivity
+            # Solo usar si dio un valor no nulo o el texto original es neutro
+            if pol_tb != 0.0 or sub_tb != 0.0:
+                pol, sub = pol_tb, sub_tb
+                metodo = "traducción"
     except Exception:
-        blob = TextBlob(oracion)
-        pol = blob.sentiment.polarity
-        sub = blob.sentiment.subjectivity
+        pass
+
+    # ── Capa 2: TextBlob directo en español (backup) ──────────
+    if pol is None:
+        try:
+            blob_es = TextBlob(oracion)
+            pol_es = blob_es.sentiment.polarity
+            sub_es = blob_es.sentiment.subjectivity
+            if pol_es != 0.0:
+                pol, sub = pol_es, sub_es
+                metodo = "textblob-es"
+        except Exception:
+            pass
+
+    # ── Capa 3: Lexicón propio en español (siempre funciona) ──
+    if pol is None or pol == 0.0:
+        pol_lex, sub_lex = analizar_con_lexico(oracion)
+        # Combinar si hay señal del lexicón
+        if pol_lex != 0.0:
+            if pol is not None and pol != 0.0:
+                pol = (pol + pol_lex) / 2
+                sub = (sub + sub_lex) / 2
+            else:
+                pol, sub = pol_lex, sub_lex
+                metodo = "lexicón"
+
+    pol = pol if pol is not None else 0.0
+    sub = sub if sub is not None else 0.0
 
     if pol > 0.1:
-        etiqueta = "Positivo"
-        emoji = "🟢"
-        css_clase = "positivo"
+        etiqueta, emoji, css_clase = "Positivo", "🟢", "positivo"
     elif pol < -0.1:
-        etiqueta = "Negativo"
-        emoji = "🔴"
-        css_clase = "negativo"
+        etiqueta, emoji, css_clase = "Negativo", "🔴", "negativo"
     else:
-        etiqueta = "Neutro"
-        emoji = "⚪"
-        css_clase = "neutro"
+        etiqueta, emoji, css_clase = "Neutro", "⚪", "neutro"
 
     return {
         "polaridad": round(pol, 4),
         "subjetividad": round(sub, 4),
         "etiqueta": etiqueta,
         "emoji": emoji,
-        "css": css_clase
+        "css": css_clase,
+        "metodo": metodo
     }
 
 
@@ -374,11 +503,16 @@ if analizar and texto_usuario.strip():
     # ── Resultado principal ──────────────────────────────────
     badge_class = f"badge-{res['css']}"
     label_sub = "Objetivo" if sub < 0.35 else "Subjetivo" if sub > 0.65 else "Mixto"
+    metodo_icons = {"traducción": "🌐 Traducción → TextBlob", "textblob-es": "📝 TextBlob español", "lexicón": "📖 Lexicón español"}
+    metodo_label = metodo_icons.get(res.get("metodo", "lexicón"), "📖 Lexicón español")
 
     st.markdown(f"""
     <div class="result-card">
         <div style="text-align:center; margin-bottom:1rem;">
             <span class="sentiment-badge {badge_class}">{res['emoji']} {res['etiqueta']}</span>
+            <div style="margin-top:0.5rem;font-size:0.75rem;color:#4b5563">
+                Método: <span style="color:#a78bfa">{metodo_label}</span>
+            </div>
         </div>
         <div class="metric-row">
             <div class="metric-box">
